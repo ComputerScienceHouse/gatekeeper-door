@@ -10,6 +10,5 @@ clap = "2.27.1"
 daemonize = "0.2.3"
 log = "0.3.8"
 log4rs = "0.7.0"
-
-[dependencies.nearfield]
-git = "https://github.com/stevenmirabito/nearfield"
+sysfs-pwm = "0.1.0"
+nearfield = { path = "/usr/src/nearfield" }

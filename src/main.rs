@@ -4,6 +4,11 @@ extern crate clap;
 extern crate daemonize;
 extern crate chan_signal;
 extern crate log4rs;
+extern crate nearfield;
+extern crate sysfs_pwm;
+
+mod reader;
+mod beeper;
 
 use std::thread;
 use clap::{App, Arg, ArgMatches};
@@ -12,6 +17,8 @@ use chan_signal::Signal;
 use log::LogLevelFilter;
 use log4rs::append::console::ConsoleAppender;
 use log4rs::config::{Appender, Config, Root};
+use reader::Reader;
+use beeper::Beeper;
 
 fn main() {
     // Configure Logging
@@ -76,7 +83,34 @@ fn run(_sdone: chan::Sender<()>, args: ArgMatches) {
     } else {
         // Stay in foreground
         info!("Running in foreground");
-        std::thread::sleep(std::time::Duration::from_secs(5));
+        let reader = Reader::new();
+        let beeper = Beeper::new();
+
+        match reader {
+            Ok(mut reader) => {
+                match beeper {
+                    Ok(beeper) => {
+                        info!("Opened NFC reader: {:?}", reader.name());
+
+                        info!("Polling for tag...");
+
+                        let target = reader.poll();
+
+                        match target {
+                            Ok(target) => {
+                                info!("{}", target);
+
+                                error!("Access deined!");
+                                beeper.access_denied();
+                            },
+                            Err(e) => error!("{}", e),
+                        }
+                    },
+                    Err(e) => error!("{}", e)
+                }
+            },
+            Err(e) => error!("{}", e),
+        }
     }
 
     // _sdone gets dropped which closes the channel and causes `rdone` to unblock
