@@ -1,14 +1,7 @@
-#[macro_use] extern crate log;
-#[macro_use] extern crate chan;
-extern crate clap;
-extern crate daemonize;
-extern crate chan_signal;
-extern crate log4rs;
-extern crate nearfield;
-extern crate sysfs_pwm;
-
-mod reader;
-mod beeper;
+#[macro_use]
+extern crate log;
+#[macro_use]
+extern crate chan;
 
 use std::thread;
 use clap::{App, Arg, ArgMatches};
@@ -17,8 +10,9 @@ use chan_signal::Signal;
 use log::LogLevelFilter;
 use log4rs::append::console::ConsoleAppender;
 use log4rs::config::{Appender, Config, Root};
-use reader::Reader;
-use beeper::Beeper;
+
+use gatekeeper::reader::Reader;
+use gatekeeper::beeper::Beeper;
 
 fn main() {
     // Configure Logging
