@@ -54,16 +54,16 @@ pub struct NfcDevice<'a> {
 impl NfcDevice<'_> {
     pub fn first_tag(&mut self) -> Option<NfcTag> {
 
-        let tag = unsafe {
+        let (tags, tag) = unsafe {
             let tags = ffi::freefare_get_tags(self.device);
             if tags == std::ptr::null_mut() { return None; }
 
             let tag = *tags;
             if tag == std::ptr::null_mut() { return None; }
-            tag
+            (tags, tag)
         };
 
-        Some(NfcTag { tag, _device_lifetime: PhantomData })
+        Some(NfcTag { tags, tag, _device_lifetime: PhantomData })
     }
 }
 
@@ -76,24 +76,34 @@ impl Drop for NfcDevice<'_> {
 }
 
 pub struct NfcTag <'a> {
+    tags: *mut *mut ffi::mifare_t,
     tag: *mut ffi::mifare_t,
     _device_lifetime: std::marker::PhantomData<&'a ()>,
 }
 
 impl NfcTag<'_> {
-    pub fn get_uid(&self) -> Option<&str> {
+    pub fn get_uid(&mut self) -> Option<String> {
         unsafe {
             let tag_uid = ffi::freefare_get_tag_uid(self.tag);
-            let tag_uid_str = CStr::from_ptr(tag_uid);
-            tag_uid_str.to_str().ok()
+            if tag_uid == std::ptr::null_mut() { return None; }
+            let tag_uid_string = CString::from_raw(tag_uid);
+            Some(tag_uid_string.to_string_lossy().to_string())
         }
     }
 
-    pub fn get_friendly_name(&self) -> Option<&str> {
+    pub fn get_friendly_name(&mut self) -> Option<&str> {
         unsafe {
             let tag_name = ffi::freefare_get_tag_friendly_name(self.tag);
             let tag_name_string = CStr::from_ptr(tag_name);
             tag_name_string.to_str().ok()
+        }
+    }
+}
+
+impl Drop for NfcTag<'_> {
+    fn drop(&mut self) {
+        unsafe {
+            ffi::freefare_free_tags(self.tags);
         }
     }
 }

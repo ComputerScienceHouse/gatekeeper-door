@@ -48,7 +48,8 @@ extern {
 extern {
     pub fn freefare_get_tags(device: *const device_t) -> *mut *mut mifare_t;
     pub fn freefare_get_tag_type(tag: *mut mifare_t) -> i8;
-    pub fn freefare_get_tag_uid(tag: *mut mifare_t) -> *const c_char;
+    pub fn freefare_get_tag_uid(tag: *mut mifare_t) -> *mut c_char;
     pub fn freefare_get_tag_friendly_name(tag: *mut mifare_t) -> *const c_char;
     pub fn freefare_free_tags(tags: *mut *mut mifare_t);
+    pub fn free(data: *mut c_void);
 }
