@@ -1,50 +1,11 @@
 #![allow(non_camel_case_types)]
 
-use std::ffi::CString;
 use std::os::raw::{c_void, c_char};
 
 pub type context_t = c_void;
 pub type mifare_t = c_void;
 pub type device_t = c_void;
 pub type realm_t = c_void;
-
-#[repr(transparent)]
-pub struct Realm(*mut c_void);
-
-impl Realm {
-    pub fn new(
-        slot: u8,
-        name: &str,
-        association_id: &str,
-        auth: &str,
-        read: &str,
-        update: &str,
-        public: &str,
-        private: &str,
-    ) -> Option<Self> {
-        let ffi_name = CString::new(name).ok()?;
-        let ffi_association = CString::new(association_id).ok()?;
-        let ffi_auth = CString::new(auth).ok()?;
-        let ffi_read = CString::new(read).ok()?;
-        let ffi_update = CString::new(update).ok()?;
-        let ffi_public = CString::new(public).ok()?;
-        let ffi_private = CString::new(private).ok()?;
-
-        let inner = unsafe {
-            realm_create(
-                slot,
-                ffi_name.into_raw(),
-                ffi_association.into_raw(),
-                ffi_read.into_raw(),
-                ffi_auth.into_raw(),
-                ffi_update.into_raw(),
-                ffi_public.into_raw(),
-                ffi_private.into_raw(),
-            )
-        };
-        Some(Realm(inner))
-    }
-}
 
 #[link(name = "gatekeeper")]
 extern {
@@ -57,9 +18,9 @@ extern {
         update_key: *const c_char,
         public_key: *const c_char,
         private_key: *const c_char,
-    ) -> *mut c_void;
+    ) -> *mut realm_t;
 
-    pub fn realm_free(realm: *const c_void);
+    pub fn realm_free(realm: *mut realm_t);
 
     pub fn issue_tag(
         tag: *mut mifare_t,
@@ -77,9 +38,9 @@ extern {
 #[link(name = "nfc")]
 extern {
     pub fn nfc_init(context: *mut *mut context_t);
-    pub fn nfc_list_devices(context: *mut context_t, devices: *mut *mut c_char, device_count: usize) -> u32;
+    pub fn nfc_list_devices(context: *mut context_t, devices: *mut *const c_char, device_count: usize) -> u32;
     pub fn nfc_open(context: *mut context_t, device_id: *const c_char) -> *mut device_t;
-    pub fn nfc_close(context: *mut context_t);
+    pub fn nfc_close(context: *mut device_t);
     pub fn nfc_exit(context: *mut context_t);
 }
 
