@@ -34,7 +34,7 @@ impl Nfc {
             }
             device_ptr
         };
-        Some(NfcDevice { device, _context_lifetime: PhantomData })
+        Some(NfcDevice { device, _context: self })
     }
 }
 
@@ -48,7 +48,7 @@ impl Drop for Nfc {
 
 pub struct NfcDevice<'a> {
     device: *mut ffi::device_t,
-    _context_lifetime: std::marker::PhantomData<&'a ()>,
+    _context: &'a Nfc,
 }
 
 impl NfcDevice<'_> {
@@ -98,12 +98,77 @@ impl NfcTag<'_> {
             tag_name_string.to_str().ok()
         }
     }
+
+    pub fn issue(&mut self, system_secret: &str, realm: &mut Realm) -> Result<(), ()> {
+        let system_secret = CString::new(system_secret).unwrap();
+        let realms = &mut realm.realm;
+        unsafe {
+            let issue_result = ffi::issue_tag(self.tag, system_secret.as_ptr(), realms as *mut _, 1);
+            if issue_result != 0 { return Err(()); }
+            return Ok(());
+        }
+    }
+
+    pub fn authenticate(&mut self, realm: &mut Realm) -> Result<(), ()> {
+        let auth_result = unsafe {
+            ffi::authenticate_tag(self.tag, realm.realm)
+        };
+        if auth_result == 0 { return Err(()); }
+        Ok(())
+    }
 }
 
 impl Drop for NfcTag<'_> {
     fn drop(&mut self) {
         unsafe {
             ffi::freefare_free_tags(self.tags);
+        }
+    }
+}
+
+pub struct Realm {
+    realm: *mut ffi::realm_t,
+}
+
+impl Realm {
+    pub fn new(
+        slot: u8,
+        name: &str,
+        association: &str,
+        auth_key: &str,
+        read_key: &str,
+        update_key: &str,
+        public_key: &str,
+        private_key: &str,
+    ) -> Option<Self> {
+        let ffi_name = CString::new(name).ok()?;
+        let ffi_association = CString::new(association).ok()?;
+        let ffi_auth_key = CString::new(auth_key).ok()?;
+        let ffi_read_key = CString::new(read_key).ok()?;
+        let ffi_update_key = CString::new(update_key).ok()?;
+        let ffi_public_key = CString::new(public_key).ok()?;
+        let ffi_private_key = CString::new(private_key).ok()?;
+
+        let realm = unsafe {
+            ffi::realm_create(slot,
+                ffi_name.as_ptr(),
+                ffi_association.as_ptr(),
+                ffi_auth_key.as_ptr(),
+                ffi_read_key.as_ptr(),
+                ffi_update_key.as_ptr(),
+                ffi_public_key.as_ptr(),
+                ffi_private_key.as_ptr(),
+            )
+        };
+
+        Some(Realm { realm })
+    }
+}
+
+impl Drop for Realm {
+    fn drop(&mut self) {
+        unsafe {
+            ffi::realm_free(self.realm);
         }
     }
 }
