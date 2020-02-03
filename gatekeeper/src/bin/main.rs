@@ -2,16 +2,16 @@
 extern crate log;
 #[macro_use]
 extern crate chan;
+extern crate libgatekeeper_sys;
 
 use std::thread;
 use clap::{App, Arg, ArgMatches};
-use daemonize::{Daemonize};
 use chan_signal::Signal;
 use log::LogLevelFilter;
 use log4rs::append::console::ConsoleAppender;
 use log4rs::config::{Appender, Config, Root};
+use libgatekeeper_sys::Nfc;
 
-use gatekeeper::reader::Reader;
 use gatekeeper::beeper::Beeper;
 
 fn main() {
@@ -28,10 +28,10 @@ fn main() {
         .version("0.1.0")
         .author("Steven Mirabito <steven@stevenmirabito.com>")
         .about("Door lock client software for the Gatekeeper access control system")
-        .arg(Arg::with_name("daemonize")
-            .short("d")
-            .long("daemonize")
-            .help("Daemonize instead of running in foreground"))
+        .arg(Arg::with_name("DEVICE")
+             .help("Device connection string (e.g. 'pn532_uart:/dev/ttyUSB0')")
+             .required(true)
+             .index(1))
         .get_matches();
 
     // Handle signals when the OS sends an INT or TERM
@@ -45,67 +45,24 @@ fn main() {
     chan_select! {
         signal.recv() -> signal => {
             info!("Received SIG{:?}, shutting down", signal.unwrap());
-
-            // TODO: Cleanup
-
-            info!("Shutdown complete. Goodbye!");
         },
         rdone.recv() => {
             info!("Reached exit condition, shutting down");
-
-            // TODO: Cleanup
-
-            info!("Shutdown complete. Goodbye!");
         }
     }
 }
 
 fn run(_sdone: chan::Sender<()>, args: ArgMatches) {
-    // Should we daemonize or stay in foreground?
-    if args.is_present("daemonize") {
-        info!("Starting Gatekeeper Door Daemon");
-        let daemonize = Daemonize::new()
-            .pid_file("./gatekeeper.pid");
+    let mut beeper = Beeper::new().ok_or("failed to open beeper").unwrap();
+    let mut nfc = Nfc::new().ok_or("failed to create NFC context").unwrap();
+    let conn_str = args.value_of("DEVICE").unwrap().to_string();
+    let mut device = nfc.gatekeeper_device(conn_str).ok_or("failed to get gatekeeper device").unwrap();
 
-        match daemonize.start() {
-            Ok(_) => {
-                info!("Success, daemonized!");
-                std::thread::sleep(std::time::Duration::from_secs(5));
-            },
-            Err(e) => error!("{}", e),
-        }
-    } else {
-        // Stay in foreground
-        info!("Running in foreground");
-        let reader = Reader::new();
-        let beeper = Beeper::new();
-
-        match reader {
-            Ok(mut reader) => {
-                match beeper {
-                    Ok(beeper) => {
-                        info!("Opened NFC reader: {:?}", reader.name());
-
-                        info!("Polling for tag...");
-
-                        let target = reader.poll();
-
-                        match target {
-                            Ok(target) => {
-                                info!("{}", target);
-
-                                error!("Access deined!");
-                                beeper.access_denied();
-                            },
-                            Err(e) => error!("{}", e),
-                        }
-                    },
-                    Err(e) => error!("{}", e)
-                }
-            },
-            Err(e) => error!("{}", e),
-        }
+    loop {
+        info!("Polling for tag...");
+        let mut tag = device.first_tag().ok_or("failed to get tag").unwrap();
+        beeper.access_denied();
+        println!("Tag UID: {:?}", tag.get_uid());
+        println!("Tag Name: {:?}", tag.get_friendly_name());
     }
-
-    // _sdone gets dropped which closes the channel and causes `rdone` to unblock
 }

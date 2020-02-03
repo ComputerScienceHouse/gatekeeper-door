@@ -16,8 +16,7 @@ path = "src/bin/main.rs"
 chan = "0.1.19"
 chan-signal = "0.3.1"
 clap = "2.27.1"
-daemonize = "0.2.3"
 log = "0.3.8"
 log4rs = "0.7.0"
 sysfs-pwm = "0.1.0"
-nearfield = { git = "https://github.com/stevenmirabito/nearfield" }
+libgatekeeper-sys = { path = "../libgatekeeper-sys" }
