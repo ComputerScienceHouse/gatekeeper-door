@@ -1,0 +1,108 @@
+################################################################################
+# Base image
+################################################################################
+
+FROM balenalib/%%BALENA_MACHINE_NAME%%-debian as base
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# libgatekeeper dependencies
+RUN apt-get -q update \
+    && apt-get install -yq --no-install-recommends libnfc-dev libfreefare-dev uuid-dev libssl-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build libgatekeeper
+RUN apt-get -q update \
+    && apt-get install -yq --no-install-recommends build-essential cmake pkg-config curl \
+    && cd /usr/src \
+    && curl -o libgatekeeper.tar.gz -fsSL https://api.github.com/repos/ComputerScienceHouse/libgatekeeper/tarball \
+    && tar -zxvf libgatekeeper.tar.gz \
+    && mv *-libgatekeeper-* libgatekeeper \
+    && mkdir /usr/src/libgatekeeper/build \
+    && cd /usr/src/libgatekeeper/build \
+    && cmake .. \
+    && make \
+    && make install \
+    && apt-get remove --purge -yq build-essential cmake pkg-config curl \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+################################################################################
+# Rust image
+################################################################################
+
+FROM base as rust
+
+# Install build tools
+RUN apt-get -q update && apt-get install -yq --no-install-recommends build-essential curl file
+
+# https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=923479
+# https://github.com/balena-io-library/base-images/issues/562
+RUN c_rehash
+
+ENV PATH=/root/.cargo/bin:$PATH
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --default-toolchain 1.41.0 -y
+
+################################################################################
+# Dependencies
+################################################################################
+
+FROM rust as dependencies
+
+WORKDIR /build/app
+
+# Copy everything
+COPY . .
+
+# Build app, then remove the fake app build artifacts
+#
+# NOTE If your application name contains `-` (`foo-bar` for example)
+# then the correct command to remove build artifacts looks like:
+#
+# RUN rm -rf target/release/foo-bar target/release/deps/foo_bar-*
+#                              ^                           ^
+RUN cargo build --release \
+    && rm -rf target/release/gatekeeper* target/release/deps/gatekeeper-*
+
+################################################################################
+# Builder
+################################################################################
+
+FROM rust as builder
+
+# We do not want to download deps, update registry, ... again
+COPY --from=dependencies /root/.cargo /root/.cargo
+
+WORKDIR /build/app
+
+# Copy everything, not just source code
+COPY . .
+
+# Update already built deps from dependencies image
+COPY --from=dependencies /build/app/target target
+
+# Build real app
+RUN cargo build --release
+
+################################################################################
+# Final image
+################################################################################
+
+FROM base
+
+WORKDIR /app
+
+ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib
+
+# Copy binary from builder image
+COPY --from=builder /build/app/target/release/gatekeeper .
+
+# Copy other folders required by the application. Example:
+# COPY --from=builder /build/app/assets assets
+
+# Launch application
+CMD ["./gatekeeper", "pn532_i2c:/dev/i2c-2"]
+
