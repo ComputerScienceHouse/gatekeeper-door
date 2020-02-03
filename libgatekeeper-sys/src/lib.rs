@@ -25,8 +25,8 @@ impl Nfc {
         Some(Nfc { context })
     }
 
-    pub fn gatekeeper_device(&mut self) -> Option<NfcDevice> {
-        let device_string = CString::new("pn532_uart:/dev/ttyUSB0").unwrap();
+    pub fn gatekeeper_device(&mut self, conn_str: String) -> Option<NfcDevice> {
+        let device_string = CString::new(conn_str).unwrap();
         let device = unsafe {
             let device_ptr = ffi::nfc_open(self.context, device_string.as_ptr());
             if device_ptr == std::ptr::null_mut() {
