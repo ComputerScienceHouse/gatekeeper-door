@@ -17,16 +17,21 @@ pub struct Beeper {
 impl Beeper {
     pub fn new() -> Option<Self> {
         let pwm = Pwm::new(PWM_CHIP, PWM_NUMBER).unwrap();
-        pwm.enable(true).unwrap();
-        pwm.set_period_ns(BEEPER_PERIOD).unwrap();
 
         Some(Beeper {
             pwm
         })
     }
 
-    pub fn access_denied(&mut self) {
+    fn setup(&self) {
+        self.pwm.enable(true).unwrap();
+        self.pwm.set_period_ns(BEEPER_PERIOD).unwrap();
+    }
+
+    pub fn access_denied(&self) {
         self.pwm.with_exported(|| {
+            self.setup();
+
             for _ in 0..3 {
                 self.pwm.set_duty_cycle_ns(BEEPER_DUTY_CYCLE).unwrap();
                 sleep(Duration::from_millis(80));
@@ -35,14 +40,16 @@ impl Beeper {
             }
 
             self.pwm.set_duty_cycle_ns(0)
-        }).unwrap()
+        }).unwrap();
     }
 
-    pub fn access_granted(&mut self) {
+    pub fn access_granted(&self) {
         self.pwm.with_exported(|| {
+            self.setup();
+
             self.pwm.set_duty_cycle_ns(BEEPER_DUTY_CYCLE).unwrap();
             sleep(Duration::from_millis(200));
             self.pwm.set_duty_cycle_ns(0)
-        }).unwrap()
+        }).unwrap();
     }
 }

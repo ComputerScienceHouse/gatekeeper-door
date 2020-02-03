@@ -53,7 +53,7 @@ fn main() {
 }
 
 fn run(_sdone: chan::Sender<()>, args: ArgMatches) {
-    let mut beeper = Beeper::new().ok_or("failed to open beeper").unwrap();
+    let beeper = Beeper::new().ok_or("failed to open beeper").unwrap();
     let mut nfc = Nfc::new().ok_or("failed to create NFC context").unwrap();
     let conn_str = args.value_of("DEVICE").unwrap().to_string();
     let mut device = nfc.gatekeeper_device(conn_str).ok_or("failed to get gatekeeper device").unwrap();
