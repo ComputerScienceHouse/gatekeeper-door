@@ -60,9 +60,15 @@ fn run(_sdone: chan::Sender<()>, args: ArgMatches) {
 
     loop {
         info!("Polling for tag...");
-        let mut tag = device.first_tag().ok_or("failed to get tag").unwrap();
-        beeper.access_denied();
-        println!("Tag UID: {:?}", tag.get_uid());
-        println!("Tag Name: {:?}", tag.get_friendly_name());
+        let result = device.first_tag();
+
+        match result {
+            Some(mut tag) => {
+                println!("Tag UID: {:?}", tag.get_uid());
+                println!("Tag Name: {:?}", tag.get_friendly_name());
+                beeper.access_denied();
+            },
+            None => {}
+        }
     }
 }
