@@ -52,10 +52,21 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --defau
 
 FROM rust as dependencies
 
-WORKDIR /build/app
+WORKDIR /build/workspace
 
-# Copy everything
-COPY . .
+# Copy workspace config
+COPY Cargo.* ./
+
+# Setup fake projects
+RUN USER=root cargo new gatekeeper --bin \
+    && USER=root cargo new libgatekeeper-sys --lib \
+    && mkdir gatekeeper/src/bin \
+    && mv gatekeeper/src/main.rs gatekeeper/src/bin/main.rs \
+    && touch gatekeeper/src/lib.rs
+
+# Copy project configs
+COPY gatekeeper/Cargo.* ./gatekeeper/
+COPY libgatekeeper-sys/Cargo.* ./libgatekeeper-sys/
 
 # Build app, then remove the fake app build artifacts
 #
@@ -65,7 +76,8 @@ COPY . .
 # RUN rm -rf target/release/foo-bar target/release/deps/foo_bar-*
 #                              ^                           ^
 RUN cargo build --release \
-    && rm -rf target/release/gatekeeper* target/release/deps/gatekeeper-*
+    && rm -rf target/release/gatekeeper* target/release/deps/gatekeeper-* \
+    && rm -rf target/release/libgatekeeper-sys* target/release/deps/libgatekeeper_sys-*
 
 ################################################################################
 # Builder
@@ -82,7 +94,7 @@ WORKDIR /build/app
 COPY . .
 
 # Update already built deps from dependencies image
-COPY --from=dependencies /build/app/target target
+COPY --from=dependencies /build/workspace/target target
 
 # Build real app
 RUN cargo build --release
