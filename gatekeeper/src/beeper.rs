@@ -24,22 +24,27 @@ impl Beeper {
     }
 
     fn setup(&self) {
-        self.pwm.enable(true).unwrap();
+        println!("Set period PWM");
         self.pwm.set_period_ns(BEEPER_PERIOD).unwrap();
+        println!("Set duty cycle PWM");
+        self.pwm.set_duty_cycle_ns(BEEPER_DUTY_CYCLE).unwrap();
     }
 
     pub fn access_denied(&self) {
+        println!("Attempt export PWM");
         self.pwm.with_exported(|| {
             self.setup();
 
             for _ in 0..3 {
-                self.pwm.set_duty_cycle_ns(BEEPER_DUTY_CYCLE).unwrap();
+                println!("Enable PWM");
+                self.pwm.enable(true).unwrap();
                 sleep(Duration::from_millis(80));
-                self.pwm.set_duty_cycle_ns(0).unwrap();
+                println!("Disable PWM");
+                self.pwm.enable(false).unwrap();
                 sleep(Duration::from_millis(80));
             }
 
-            self.pwm.set_duty_cycle_ns(0)
+            Ok(())
         }).unwrap();
     }
 
@@ -47,9 +52,13 @@ impl Beeper {
         self.pwm.with_exported(|| {
             self.setup();
 
-            self.pwm.set_duty_cycle_ns(BEEPER_DUTY_CYCLE).unwrap();
-            sleep(Duration::from_millis(200));
-            self.pwm.set_duty_cycle_ns(0)
+            println!("Enable PWM");
+            self.pwm.enable(true).unwrap();
+            sleep(Duration::from_millis(80));
+            println!("Disable PWM");
+            self.pwm.enable(false).unwrap();
+
+            Ok(())
         }).unwrap();
     }
 }
