@@ -24,19 +24,19 @@ RUN cd libnfc && \
     mkdir build && \
     cd build && \
     cmake .. -DCMAKE_TOOLCHAIN_FILE=/armv7-toolchain.cmake \
-       -DCMAKE_INSTALL_PREFIX=/usr/local/arm-linux-gnueabihf/ \
+       -DCMAKE_INSTALL_PREFIX=/usr/arm-linux-gnueabihf/ \
        -DBUILD_EXAMPLES=OFF \
        -DBUILD_UTILS=OFF && \
     make && \
     make install
 
-#./configure --host=arm-linux-gnueabihf --prefix=/usr/local/arm-linux-gnueabihf/ && \
+#./configure --host=arm-linux-gnueabihf --prefix=/usr/arm-linux-gnueabihf/ && \
 RUN cd libfreefare && \
     git checkout $LIBFREEFARE_VERSION && \
     mkdir build && \
     cd build && \
     cmake .. -DCMAKE_TOOLCHAIN_FILE=/armv7-toolchain.cmake \
-       -DCMAKE_INSTALL_PREFIX=/usr/local/arm-linux-gnueabihf/ && \
+       -DCMAKE_INSTALL_PREFIX=/usr/arm-linux-gnueabihf/ && \
     make && \
     make install
 
@@ -45,7 +45,6 @@ RUN cd libgatekeeper && \
     mkdir build && \
     cd build && \
     cmake .. -DCMAKE_TOOLCHAIN_FILE=/armv7-toolchain.cmake \
-        -DCMAKE_INSTALL_PREFIX=/usr/local/arm-linux-gnueabihf/ && \
+        -DCMAKE_INSTALL_PREFIX=/usr/arm-linux-gnueabihf/ && \
     make && \
-    make install && \
-    chmod +x /usr/local/arm-linux-gnueabihf/lib/libgatekeeper.so
+    make install
