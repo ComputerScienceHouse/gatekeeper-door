@@ -30,7 +30,6 @@ RUN cd libnfc && \
     make && \
     make install
 
-#./configure --host=arm-linux-gnueabihf --prefix=/usr/arm-linux-gnueabihf/ && \
 RUN cd libfreefare && \
     git checkout $LIBFREEFARE_VERSION && \
     mkdir build && \
