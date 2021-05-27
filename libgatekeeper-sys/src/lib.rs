@@ -130,6 +130,9 @@ pub struct Realm {
     realm: *mut ffi::realm_t,
 }
 
+// A realm is a global thing, it's not tied to a card.
+// Keys here are secrets for that particular project (e.g. drink, gatekeeper)
+// Most likely, the only thing you want to change here is 'association' for each card
 impl Realm {
     pub fn new(
         slot: u8,
