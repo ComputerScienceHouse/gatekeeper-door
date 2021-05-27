@@ -42,3 +42,7 @@ RUN cd libgatekeeper && \
         -DCMAKE_INSTALL_PREFIX=/usr/arm-linux-gnueabihf/ && \
     make && \
     make install
+
+# https://github.com/rust-embedded/cross/issues/404  
+# Actual crates don't use the correct pkg-config (eyeroll)
+ENV PKG_CONFIG_LIBDIR=/usr/local/lib/arm-linux-gnueabihf/pkgconfig:/usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/arm-linux-gnueabihf/lib/pkgconfig
