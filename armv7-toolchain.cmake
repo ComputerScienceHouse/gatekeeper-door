@@ -6,4 +6,5 @@ set(CMAKE_CXX_COMPILER arm-linux-gnueabihf-g++)
 set(ENV{PKG_CONFIG} arm-linux-gnueabihf-pkg-config)
 
 # Make sure our built libs go somewhere we can find them:
-set(CMAKE_INSTALL_PREFIX /usr/local/arm-linux-gnueabihf/)
+# AFAICT this gets overwritten, but I'll leave it here in case we can figure out why
+# set(CMAKE_INSTALL_PREFIX /usr/arm-linux-gnueabihf/)

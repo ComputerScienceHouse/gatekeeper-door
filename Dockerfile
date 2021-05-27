@@ -1,14 +1,8 @@
 FROM docker.io/rustembedded/cross:armv7-unknown-linux-gnueabihf-0.2.1
 
-# Force rebuild when our versions change...
-RUN LIBNFC_VERSION=2b5ad9ce0be19fbca5abc04b4ee0b59fb612e590 && \
-    LIBFREEFARE_VERSION=e95406c0d1b417ff6db7ff8ee95df1b5981ec7b5 && \
-    LIBGATEKEEPER_VERSION=dc021430a68c66878bfe363fb85ce277e5a62501
-
 # We need to clone up here because installing armhf openssl breaks ca-certificates (seriously...)
-RUN git clone https://github.com/nfc-tools/libnfc && \
-    git clone https://github.com/nfc-tools/libfreefare && \
-    git clone https://github.com/Mstrodl/libgatekeeper
+RUN curl -L https://github.com/nfc-tools/libnfc/releases/download/libnfc-1.8.0/libnfc-1.8.0.tar.bz2 | tar xvj && \
+    curl -L https://github.com/nfc-tools/libfreefare/releases/download/libfreefare-0.4.0/libfreefare-0.4.0.tar.bz2 | tar xvj
 
 # Make sure we can use pkg-config...
 RUN ln -s /usr/share/pkg-config-crosswrapper /usr/local/bin/arm-linux-gnueabihf-pkg-config
@@ -19,8 +13,7 @@ RUN dpkg --add-architecture armhf && \
 
 COPY armv7-toolchain.cmake /
 
-RUN cd libnfc && \
-    git checkout $LIBNFC_VERSION && \
+RUN cd libnfc-1.8.0 && \
     mkdir build && \
     cd build && \
     cmake .. -DCMAKE_TOOLCHAIN_FILE=/armv7-toolchain.cmake \
@@ -30,17 +23,19 @@ RUN cd libnfc && \
     make && \
     make install
 
-RUN cd libfreefare && \
-    git checkout $LIBFREEFARE_VERSION && \
-    mkdir build && \
-    cd build && \
-    cmake .. -DCMAKE_TOOLCHAIN_FILE=/armv7-toolchain.cmake \
-       -DCMAKE_INSTALL_PREFIX=/usr/arm-linux-gnueabihf/ && \
+# I wish libfreefare 0.4.0's cmake files actually worked... Anyways, automake is
+# A fake build system, so we have to tell it that cross compiled targets might actually
+# support standard libc malloc... Ugh.
+RUN cd libfreefare-0.4.0 && \  
+    sed -i 's/ac_cv_func_malloc_0_nonnull=no/ac_cv_func_malloc_0_nonnull=yes/' configure && \
+    sed -i 's/ac_cv_func_realloc_0_nonnull=no/ac_cv_func_realloc_0_nonnull=yes/' configure && \
+    ./configure --host=arm-linux-gnueabihf --prefix=/usr/arm-linux-gnueabihf && \
     make && \
     make install
 
+COPY libgatekeeper /libgatekeeper
+
 RUN cd libgatekeeper && \
-    git checkout $LIBGATEKEEPER_VERSION && \
     mkdir build && \
     cd build && \
     cmake .. -DCMAKE_TOOLCHAIN_FILE=/armv7-toolchain.cmake \
