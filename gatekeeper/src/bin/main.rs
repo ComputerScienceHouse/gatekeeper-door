@@ -118,7 +118,7 @@ fn check_mqtt(
     let sub_token = client.subscribe_many(&[
         remote_unlock.clone(),
         user_response.clone()
-    ], &[1, 1]);
+    ], &[1, 1]).wait();
 
     loop {
         for msg in mqtt_queue.iter() {
@@ -130,7 +130,7 @@ fn check_mqtt(
                 }
             }
         }
-        client.reconnect();
+        client.reconnect().wait();
     }
 }
 
@@ -153,7 +153,7 @@ fn run(_sdone: chan::Sender<()>, args: ArgMatches<'_>, provisions: Provisions) {
 
     let (send_user, user_response) = channel::<String>();
     let mut superusers: HashMap<String, String>  = HashMap::new();
-    superusers.insert("045604da594680".to_string(), "7c5d9984-8392-4dce-8dc1-75791fa6bf31".to_string());
+    // superusers.insert("045604da594680".to_string(), "7c5d9984-8392-4dce-8dc1-75791fa6bf31".to_string());
 
     {
         let client = client.clone();
@@ -196,7 +196,11 @@ fn run(_sdone: chan::Sender<()>, args: ArgMatches<'_>, provisions: Provisions) {
                 }
                 let mut association = None;
                 if let Ok(user_data) = user_response.recv_timeout(Duration::from_millis(500)) {
-                    association = Some(user_data);
+                    if user_data.len() == 0 {
+                        association = None;
+                    } else {
+                        association = Some(user_data);
+                    }
                 } else if let Some(uid) = superusers.get(&tag.get_uid().unwrap()) {
                     association = Some(uid.to_string());
                 }
@@ -210,18 +214,15 @@ fn run(_sdone: chan::Sender<()>, args: ArgMatches<'_>, provisions: Provisions) {
                                            &provisions.private_key);
                     if let Some(mut realm) = realm {
                         if tag.authenticate(&mut realm).is_ok() {
-                            // Yay!
-                            let payload = json!({
-                                "access_point": provisions.access_point.clone(),
-                                "association": association
-                            }).to_string();
-
                             println!("We appear to be reading a valid key, let's tell the server!");
                             valid_key = true;
                             if superusers.contains_key(&tag.get_uid().unwrap()) {
                                 unlock(&beeper);
                             } else {
-                                println!("Not superuser, telling server");
+                                // Yay!
+                                let payload = json!({
+                                    "association": association
+                                }).to_string();
                                 let msg = mqtt::Message::new(
                                     access_requested.clone(), payload, mqtt::QOS_1
                                 );
@@ -232,6 +233,8 @@ fn run(_sdone: chan::Sender<()>, args: ArgMatches<'_>, provisions: Provisions) {
                             println!("Couldn't authenticate key! -- It's possible someone is doing something nasty!");
                         }
                     }
+                } else {
+                    println!("Key reads, but server doesn't know of it...");
                 }
                 if valid_key {
                     if let Some(ref beeper) = *beeper {
