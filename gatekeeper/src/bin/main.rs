@@ -115,10 +115,14 @@ fn check_mqtt(
 
     let remote_unlock = provisions.prefix.clone() + "/unlock";
     let user_response = provisions.prefix.clone() + "/user_response";
-    let sub_token = client.subscribe_many(&[
+    let access_denied = provisions.prefix.clone() + "/access_denied";
+    // We unwrap not because we need the response, but because we want to make sure
+    // We aren't writing buggy code!
+    client.subscribe_many(&[
         remote_unlock.clone(),
-        user_response.clone()
-    ], &[1, 1]).wait();
+        user_response.clone(),
+        access_denied.clone()
+    ], &[1, 1, 1]).wait().unwrap();
 
     loop {
         for msg in mqtt_queue.iter() {
@@ -127,6 +131,10 @@ fn check_mqtt(
                     tx.send(String::from_utf8(msg.payload().to_vec()).unwrap());
                 } else if msg.topic() == remote_unlock.clone() {
                     unlock(beeper);
+                } else if msg.topic() == access_denied.clone() {
+                    if let Some(ref beeper) = *beeper {
+                        beeper.access_denied();
+                    }
                 }
             }
         }
@@ -139,8 +147,11 @@ fn door_heartbeat(mut client: mqtt::AsyncClient, provisions: Provisions) {
     let heartbeat = provisions.prefix.clone() + "/heartbeat";
     loop {
         let msg = mqtt::Message::new(heartbeat.clone(), "{}", mqtt::QOS_1);
-        client.publish(msg).wait();
-        println!("Published a new heartbeat");
+        if let Err(err) = client.publish(msg).wait() {
+            println!("Couldn't publish heartbeat?! {}", err);
+        } else {
+            println!("Published a new heartbeat");
+        }
         thread::sleep(Duration::from_secs(15));
     }
 }
@@ -152,14 +163,21 @@ fn run(_sdone: chan::Sender<()>, args: ArgMatches<'_>, provisions: Provisions) {
     let mut device = nfc.gatekeeper_device(conn_str).ok_or("failed to get gatekeeper device").unwrap();
 
     let mut client = mqtt::AsyncClient::new(env::var("GK_MQTT_SERVER").unwrap()).unwrap();
-    client.connect(
+    match client.connect(
         mqtt::connect_options::ConnectOptionsBuilder::new()
             .keep_alive_interval(Duration::from_secs(30))
             .user_name(provisions.mqtt_username.clone())
             .password(provisions.mqtt_password.clone())
             .automatic_reconnect(Duration::from_secs(1), Duration::from_secs(30))
             .finalize()
-    ).wait();
+    ).wait() {
+        Ok(_) => {
+            println!("Established connection with broker!");
+        }
+        Err(err) => {
+            println!("Couldn't connect to MQTT broker! {}", err);
+        }
+    }
     let beeper = beeperArc.clone();
 
     let (send_user, user_response) = channel::<String>();
@@ -190,72 +208,48 @@ fn run(_sdone: chan::Sender<()>, args: ArgMatches<'_>, provisions: Provisions) {
     let mut just_scanned = false;
 
     loop {
-                            thread::sleep(Duration::from_millis(200));
         let result = device.first_tag();
 
         match result {
             Some(mut tag) => {
                 if just_scanned {
-                    thread::sleep(Duration::from_millis(200));
+                    thread::sleep(Duration::from_millis(250));
                     continue;
                 }
                 just_scanned = true;
                 println!("Tag UID: {:?}", tag.get_uid());
                 println!("Tag Name: {:?}", tag.get_friendly_name());
 
-                let association = "no";
-
-                let payload = json!({
-                    "uid": tag.get_uid()
-                }).to_string();
-                let msg = mqtt::Message::new(fetch_user.clone(), payload, mqtt::QOS_1);
-                {
-                    let client = client.clone();
-                    thread::spawn(move || { client.publish(msg) });
-                }
-                let mut association = None;
-                if let Ok(user_data) = user_response.recv_timeout(Duration::from_millis(500)) {
-                    if user_data.len() == 0 {
-                        association = None;
-                    } else {
-                        association = Some(user_data);
-                    }
-                } else if let Some(uid) = superusers.get(&tag.get_uid().unwrap()) {
-                    association = Some(uid.to_string());
-                }
-
                 let mut valid_key = false;
 
-                if let Some(association) = association {
-                    let realm = Realm::new(slot, slot_name, &association,
-                                           &provisions.auth_key, &provisions.read_key,
-                                           &provisions.update_key, &provisions.public_key,
-                                           &provisions.private_key);
-                    if let Some(mut realm) = realm {
-                        if tag.authenticate(&mut realm).is_ok() {
-                            println!("We appear to be reading a valid key, let's tell the server!");
-                            valid_key = true;
-                            if superusers.contains_key(&tag.get_uid().unwrap()) {
-                                unlock(&beeper);
-                            } else {
-                                // Yay!
-                                let payload = json!({
-                                    "association": association
-                                }).to_string();
-                                let msg = mqtt::Message::new(
-                                    access_requested.clone(), payload, mqtt::QOS_1
-                                );
-                                let client = client.clone();
-                                thread::spawn(move || { client.publish(msg) });
-                            }
+                let realm = Realm::new(slot, slot_name, "",
+                                       &provisions.auth_key, &provisions.read_key,
+                                       &provisions.update_key, &provisions.public_key,
+                                       &provisions.private_key);
+                if let Some(mut realm) = realm {
+                    if let Ok(association) = tag.authenticate(&mut realm) {
+                        println!("We appear to be reading a valid key ({}), let's tell the server!", association);
+                        valid_key = true;
+                        if superusers.contains_key(&tag.get_uid().unwrap()) {
+                            unlock(&beeper);
                         } else {
-                            println!("Couldn't authenticate key! -- It's possible someone is doing something nasty!");
+                            // Yay!
+                            let payload = json!({
+                                "association": association
+                            }).to_string();
+                            let msg = mqtt::Message::new(
+                                access_requested.clone(), payload, mqtt::QOS_1
+                            );
+                            // NB: we're using AsyncClient, so there's no need for another thread here :)
+                            // (Because we don't want to freeze trying to pub)
+                            client.publish(msg);
                         }
+                    } else {
+                        println!("Couldn't authenticate key! -- It's possible someone is doing something nasty!");
                     }
-                } else {
-                    println!("Key reads, but server doesn't know of it...");
                 }
-                if valid_key {
+
+                if !valid_key {
                     if let Some(ref beeper) = *beeper {
                         beeper.access_denied();
                     }

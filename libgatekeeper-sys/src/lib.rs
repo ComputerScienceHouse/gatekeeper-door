@@ -109,12 +109,20 @@ impl NfcTag<'_> {
         }
     }
 
-    pub fn authenticate(&mut self, realm: &mut Realm) -> Result<(), ()> {
+    // TODO: None of this is super ideal...
+    pub fn authenticate(&mut self, realm: &mut Realm) -> Result<String, ()> {
+        let mut association_id = [0i8; 37];
         let auth_result = unsafe {
-            ffi::authenticate_tag(self.tag, realm.realm)
+            ffi::authenticate_tag(self.tag, realm.realm, association_id.as_mut_ptr())
         };
         if auth_result == 0 { return Err(()); }
-        Ok(())
+        let association_id = unsafe { std::mem::transmute::<&[i8; 37], &[u8; 37]>(&association_id) };
+
+        let mut association_id = association_id.to_vec();
+        // Pop off NUL byte
+        association_id.pop();
+
+        Ok(String::from_utf8(association_id).unwrap())
     }
 }
 

@@ -100,7 +100,6 @@ fn main() {
                                     Ok(_) => {
                                         let res = client.patch(provisions.prefix.clone() + "/keys/" + &association)
                                             .json(&json!({
-                                                "uid": tag.get_uid().unwrap(),
                                                 "enabled": true
                                             }))
                                             .send();
