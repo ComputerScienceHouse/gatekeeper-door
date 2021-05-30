@@ -32,7 +32,7 @@ extern {
     pub fn authenticate_tag(
         tag: *mut mifare_t,
         realm: *mut realm_t,
-        association_id: *mut c_char,
+        association_id: *mut u8,
     ) -> i32;
 }
 
