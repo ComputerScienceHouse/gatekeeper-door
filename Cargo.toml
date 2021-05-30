@@ -3,4 +3,5 @@
 members = [
     "libgatekeeper-sys",
     "gatekeeper",
+    "enroll"
 ]

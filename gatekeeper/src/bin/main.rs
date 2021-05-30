@@ -130,7 +130,18 @@ fn check_mqtt(
                 }
             }
         }
+        // Shouldn't be necessary but who knows :shrug:
         client.reconnect().wait();
+    }
+}
+
+fn door_heartbeat(mut client: mqtt::AsyncClient, provisions: Provisions) {
+    let heartbeat = provisions.prefix.clone() + "/heartbeat";
+    loop {
+        let msg = mqtt::Message::new(heartbeat.clone(), "{}", mqtt::QOS_1);
+        client.publish(msg).wait();
+        println!("Published a new heartbeat");
+        thread::sleep(Duration::from_secs(15));
     }
 }
 
@@ -161,6 +172,12 @@ fn run(_sdone: chan::Sender<()>, args: ArgMatches<'_>, provisions: Provisions) {
         thread::spawn(move || { check_mqtt(client, &beeperArc.clone(), provisions, send_user) });
     }
 
+    {
+        let client = client.clone();
+        let provisions = provisions.clone();
+        thread::spawn(move || { door_heartbeat(client, provisions) });
+    }
+
     // lol panic
 
     let access_requested = provisions.prefix.clone() + "/access_requested";
@@ -173,11 +190,13 @@ fn run(_sdone: chan::Sender<()>, args: ArgMatches<'_>, provisions: Provisions) {
     let mut just_scanned = false;
 
     loop {
+                            thread::sleep(Duration::from_millis(200));
         let result = device.first_tag();
 
         match result {
             Some(mut tag) => {
                 if just_scanned {
+                    thread::sleep(Duration::from_millis(200));
                     continue;
                 }
                 just_scanned = true;
