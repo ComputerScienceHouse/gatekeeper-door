@@ -94,23 +94,10 @@ fn main() {
     }
 }
 
-enum RequestType {
-    FetchUser,
-    DoorCheck
-}
-
-struct Request {
-    request_type: RequestType,
-    payload: String
-}
-
 fn check_mqtt(
     mut client: mqtt::AsyncClient, beeper: &Option<Beeper>,
     provisions: Provisions, tx: std::sync::mpsc::Sender<String>
 ) {
-    let fetch_user = provisions.prefix.clone() + "/fetch_user";
-    let access_requested = provisions.prefix.clone() + "/access_requested";
-
     let mqtt_queue = client.start_consuming();
 
     let remote_unlock = provisions.prefix.clone() + "/unlock";
@@ -128,7 +115,9 @@ fn check_mqtt(
         for msg in mqtt_queue.iter() {
             if let Some(msg) = msg {
                 if msg.topic() == user_response {
-                    tx.send(String::from_utf8(msg.payload().to_vec()).unwrap());
+                    // Unwrap at end because if our channel is broken,
+                    // something is very wrong
+                    tx.send(String::from_utf8(msg.payload().to_vec()).unwrap()).unwrap();
                 } else if msg.topic() == remote_unlock.clone() {
                     unlock(beeper);
                 } else if msg.topic() == access_denied.clone() {
@@ -139,11 +128,13 @@ fn check_mqtt(
             }
         }
         // Shouldn't be necessary but who knows :shrug:
-        client.reconnect().wait();
+        if let Err(err) = client.reconnect().wait() {
+            println!("Failed to reconnect, retrying: {}", err);
+        }
     }
 }
 
-fn door_heartbeat(mut client: mqtt::AsyncClient, provisions: Provisions) {
+fn door_heartbeat(client: mqtt::AsyncClient, provisions: Provisions) {
     let heartbeat = provisions.prefix.clone() + "/heartbeat";
     loop {
         let msg = mqtt::Message::new(heartbeat.clone(), "{}", mqtt::QOS_1);
@@ -157,12 +148,12 @@ fn door_heartbeat(mut client: mqtt::AsyncClient, provisions: Provisions) {
 }
 
 fn run(_sdone: chan::Sender<()>, args: ArgMatches<'_>, provisions: Provisions) {
-    let beeperArc = Arc::new(Beeper::new().ok_or("failed to open beeper").ok());
+    let beeper_arc = Arc::new(Beeper::new().ok_or("failed to open beeper").ok());
     let mut nfc = Nfc::new().ok_or("failed to create NFC context").unwrap();
     let conn_str = args.value_of("DEVICE").unwrap().to_string();
     let mut device = nfc.gatekeeper_device(conn_str).ok_or("failed to get gatekeeper device").unwrap();
 
-    let mut client = mqtt::AsyncClient::new(env::var("GK_MQTT_SERVER").unwrap()).unwrap();
+    let client = mqtt::AsyncClient::new(env::var("GK_MQTT_SERVER").unwrap()).unwrap();
     match client.connect(
         mqtt::connect_options::ConnectOptionsBuilder::new()
             .keep_alive_interval(Duration::from_secs(30))
@@ -178,16 +169,16 @@ fn run(_sdone: chan::Sender<()>, args: ArgMatches<'_>, provisions: Provisions) {
             println!("Couldn't connect to MQTT broker! {}", err);
         }
     }
-    let beeper = beeperArc.clone();
+    let beeper = beeper_arc.clone();
 
-    let (send_user, user_response) = channel::<String>();
+    let send_user = channel::<String>().0;
     let mut superusers: HashMap<String, String>  = HashMap::new();
     // superusers.insert("045604da594680".to_string(), "7c5d9984-8392-4dce-8dc1-75791fa6bf31".to_string());
 
     {
         let client = client.clone();
         let provisions = provisions.clone();
-        thread::spawn(move || { check_mqtt(client, &beeperArc.clone(), provisions, send_user) });
+        thread::spawn(move || { check_mqtt(client, &beeper_arc.clone(), provisions, send_user) });
     }
 
     {
@@ -199,7 +190,6 @@ fn run(_sdone: chan::Sender<()>, args: ArgMatches<'_>, provisions: Provisions) {
     // lol panic
 
     let access_requested = provisions.prefix.clone() + "/access_requested";
-    let fetch_user = provisions.prefix.clone() + "/fetch_user";
 
     let slot = 0;
     let slot_name = "Doors";
