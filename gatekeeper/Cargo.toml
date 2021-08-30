@@ -1,5 +1,8 @@
 [package]
-authors = ["Steven Mirabito <steven@stevenmirabito.com>"]
+authors = [
+  "Mary Strodl <ipadlover8322@gmail.com>",
+  "Steven Mirabito <steven@stevenmirabito.com>"
+]
 name = "gatekeeper-door"
 version = "0.1.0"
 edition = "2018"
@@ -19,6 +22,6 @@ clap = "2.27.1"
 log = "0.3.8"
 log4rs = "0.7.0"
 sysfs-pwm = "0.1.0"
-libgatekeeper-sys = { path = "../libgatekeeper-sys" }
+libgatekeeper-sys = "0.1.0"
 paho-mqtt = "0.9.1"
 serde_json = "1.0.64"
