@@ -1,20 +1,21 @@
-#[macro_use]
 extern crate serde;
 extern crate serde_json;
 extern crate libgatekeeper_sys;
 extern crate reqwest;
 
 use std::env;
-use clap::{App, Arg, ArgMatches};
+use clap::{App, Arg};
 use libgatekeeper_sys::{Nfc, Realm};
 use serde_json::json;
 use std::time::Duration;
 use std::thread;
 use std::io;
 use serde::{Serialize, Deserialize};
-use reqwest::blocking::Client;
+// use reqwest::blocking::Client;
+use reqwest::StatusCode;
 
 #[derive(Debug, Serialize, Deserialize)]
+#[allow(non_snake_case)]
 struct KeyCreated {
     keyId: String,
 }
@@ -30,8 +31,6 @@ struct Provisions {
 }
 
 fn main() {
-    println!("Hello, world!");
-
     let matches = App::new("Gatekeeper Door")
         .version("0.1.0")
         .author("Steven Mirabito <steven@stevenmirabito.com>")
@@ -71,12 +70,31 @@ fn main() {
                 username.pop();
                 // TODO: Translate username => id
                 println!("Ok, enrolling {}", username);
-                let res = client.put(provisions.prefix.clone() + "/users")
+                let res_result = client.put(provisions.prefix.clone() + "/users")
                     .json(&json!({
                         "id": username
                     }))
                     .send();
+
+                match res_result {
+                    Ok(res) => match res.status() {
+                        StatusCode::OK =>
+                            println!("Issued for {}!", username),
+                        status => {
+                            println!("Failed to associate key with user! {:?}", status);
+                            continue;
+                        }
+                    }
+                    Err(error) => {
+                        println!("Failed to associate key with user! {:?}", error);
+                        continue;
+                    }
+                }
+
+
                 // Now we can ask the server!
+                // We unwrap here because pattern matching hell
+                // + there's probably something very wrong at that point
                 let res = client.put(provisions.prefix.clone() + "/keys")
                     .json(&json!({
                         "userId": username
@@ -98,11 +116,26 @@ fn main() {
                             if let Some(mut tag) = tag {
                                 match tag.issue(&provisions.system_secret.clone(), &mut realm) {
                                     Ok(_) => {
-                                        let res = client.patch(provisions.prefix.clone() + "/keys/" + &association)
-                                            .json(&json!({
-                                                "enabled": true
-                                            }))
-                                            .send();
+                                        let res_result = client.patch(
+                                            provisions.prefix.clone() + "/keys/" + &association
+                                        ).json(&json!({
+                                            "enabled": true
+                                        })).send();
+
+                                        match res_result {
+                                            Ok(res) => match res.status() {
+                                                StatusCode::OK =>
+                                                    println!("Issued for {}!", username),
+                                                status => {
+                                                    println!("Failed to associate key with user! {:?}", status);
+                                                    continue;
+                                                }
+                                            },
+                                            Err(error) => {
+                                                println!("Failed to associate key with user! {:?}", error);
+                                                continue;
+                                            }
+                                        }
                                         break;
                                     },
                                     Err(err) => {
