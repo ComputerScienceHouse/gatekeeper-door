@@ -14,7 +14,7 @@ use log4rs::config::{Appender, Config, Root};
 use libgatekeeper_sys::{Nfc, Realm};
 use serde_json::json;
 use std::env;
-use std::time::Duration;
+use std::time::{Instant, UNIX_EPOCH, Duration};
 use std::thread;
 use std::sync::mpsc::channel;
 use std::collections::HashMap;
@@ -68,11 +68,11 @@ fn main() {
     // We panic because there's no sensible default for this...
     let access_point = env::var("GK_ACCESS_POINT").unwrap().to_string();
     let provisions = Provisions {
-        auth_key: env::var("GK_AUTH_KEY").unwrap_or("dead".to_string()),
-        read_key: env::var("GK_READ_KEY").unwrap_or("beef".to_string()),
-        update_key: env::var("GK_UPDATE_KEY").unwrap_or("f00".to_string()),
-        public_key: env::var("GK_PUBLIC_KEY").unwrap_or("face".to_string()),
-        private_key: env::var("GK_PRIVATE_KEY").unwrap_or("cafe".to_string()),
+        auth_key: env::var("GK_REALM_DOORS_AUTH_KEY").unwrap(),
+        read_key: env::var("GK_REALM_DOORS_READ_KEY").unwrap(),
+        update_key: env::var("GK_REALM_DOORS_UPDATE_KEY").unwrap(),
+        public_key: env::var("GK_REALM_DOORS_PUBLIC_KEY").unwrap(),
+        private_key: env::var("GK_REALM_DOORS_PRIVATE_KEY").unwrap(),
         prefix: "gk/".to_string() + &access_point.clone(),
         access_point,
 
@@ -198,6 +198,7 @@ fn run(_sdone: chan::Sender<()>, args: ArgMatches<'_>, provisions: Provisions) {
     let mut just_scanned = false;
 
     loop {
+        let now = Instant::now();
         let result = device.first_tag();
 
         match result {
@@ -219,6 +220,7 @@ fn run(_sdone: chan::Sender<()>, args: ArgMatches<'_>, provisions: Provisions) {
                 if let Some(mut realm) = realm {
                     if let Ok(association) = tag.authenticate(&mut realm) {
                         println!("We appear to be reading a valid key ({}), let's tell the server!", association);
+                        println!("Took us {}ms to read!", now.elapsed().as_millis());
                         valid_key = true;
                         if superusers.contains_key(&tag.get_uid().unwrap()) {
                             unlock(&beeper);

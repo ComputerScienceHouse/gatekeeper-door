@@ -17,17 +17,44 @@ use reqwest::StatusCode;
 #[derive(Debug, Serialize, Deserialize)]
 #[allow(non_snake_case)]
 struct KeyCreated {
+    // The device itself should have an ID:
     keyId: String,
+
+    // Each realm has it's own association:
+    doorsId: String,
+    drinkId: String,
+    memberProjectsId: String,
 }
 
-struct Provisions {
+#[derive(Clone)]
+struct RealmKeys {
     auth_key: String,
     read_key: String,
     update_key: String,
     public_key: String,
     private_key: String,
+
+    slot_name: String,
+    slot: u8,
+}
+
+struct Provisions {
+    doors: RealmKeys,
+    drink: RealmKeys,
+    member_projects: RealmKeys,
+
     prefix: String,
+    // Consistent always
     system_secret: String
+}
+
+fn create_realm(keys: RealmKeys, association: String) -> Realm {
+    return Realm::new(
+        keys.slot, &keys.slot_name.clone(), &association,
+        &keys.auth_key, &keys.read_key,
+        &keys.update_key, &keys.public_key,
+        &keys.private_key
+    ).unwrap();
 }
 
 fn main() {
@@ -48,17 +75,41 @@ fn main() {
     let client = reqwest::blocking::Client::new();
 
     let provisions = Provisions {
-        auth_key: env::var("GK_AUTH_KEY").unwrap_or("dead".to_string()),
-        read_key: env::var("GK_READ_KEY").unwrap_or("beef".to_string()),
-        update_key: env::var("GK_UPDATE_KEY").unwrap_or("f00".to_string()),
-        public_key: env::var("GK_PUBLIC_KEY").unwrap_or("face".to_string()),
-        private_key: env::var("GK_PRIVATE_KEY").unwrap_or("cafe".to_string()),
-        system_secret: env::var("GK_SYSTEM_SECRET").unwrap_or("b00".to_string()),
-        prefix: env::var("GK_HTTP_ENDPOINT").unwrap_or("http://localhost:3000".to_string())
-    };
+        doors: RealmKeys {
+            slot: 0,
+            slot_name: "Doors".to_string(),
 
-    let slot = 0;
-    let slot_name = "Doors";
+            auth_key: env::var("GK_REALM_DOORS_AUTH_KEY").unwrap(),
+            read_key: env::var("GK_REALM_DOORS_READ_KEY").unwrap(),
+            update_key: env::var("GK_REALM_DOORS_UPDATE_KEY").unwrap(),
+            public_key: env::var("GK_REALM_DOORS_PUBLIC_KEY").unwrap(),
+            private_key: env::var("GK_REALM_DOORS_PRIVATE_KEY").unwrap()
+        },
+        drink: RealmKeys {
+            slot: 1,
+            slot_name: "Drink".to_string(),
+
+            auth_key: env::var("GK_REALM_DRINK_AUTH_KEY").unwrap(),
+            read_key: env::var("GK_REALM_DRINK_READ_KEY").unwrap(),
+            update_key: env::var("GK_REALM_DRINK_UPDATE_KEY").unwrap(),
+            public_key: env::var("GK_REALM_DRINK_PUBLIC_KEY").unwrap(),
+            private_key: env::var("GK_REALM_DRINK_PRIVATE_KEY").unwrap()
+        },
+        member_projects: RealmKeys {
+            slot: 2,
+            slot_name: "Member Projects".to_string(),
+
+            auth_key: env::var("GK_REALM_MEMBER_PROJECTS_AUTH_KEY").unwrap(),
+            read_key: env::var("GK_REALM_MEMBER_PROJECTS_READ_KEY").unwrap(),
+            update_key: env::var("GK_REALM_MEMBER_PROJECTS_UPDATE_KEY").unwrap(),
+            public_key: env::var("GK_REALM_MEMBER_PROJECTS_PUBLIC_KEY").unwrap(),
+            private_key: env::var("GK_REALM_MEMBER_PROJECTS_PRIVATE_KEY").unwrap()
+        },
+
+        // Constants
+        system_secret: env::var("GK_SYSTEM_SECRET").unwrap_or("b00".to_string()),
+        prefix: env::var("GK_HTTP_ENDPOINT").unwrap_or("http://localhost:3000/admin".to_string())
+    };
 
     loop {
         // https://github.com/rust-lang/rust/issues/59015
@@ -78,7 +129,7 @@ fn main() {
 
                 match res_result {
                     Ok(res) => match res.status() {
-                        StatusCode::OK =>
+                        StatusCode::NO_CONTENT =>
                             println!("Issued for {}!", username),
                         status => {
                             println!("Failed to associate key with user! {:?}", status);
@@ -103,28 +154,39 @@ fn main() {
                     .unwrap();
                 match res.json::<KeyCreated>() {
                     Ok(data) => {
-                        let association = data.keyId;
                         // Now we can ask for the key!
-                        let mut realm = Realm::new(
-                            slot, slot_name, &association.clone(),
-                            &provisions.auth_key, &provisions.read_key,
-                            &provisions.update_key, &provisions.public_key,
-                            &provisions.private_key
-                        ).unwrap();
                         loop {
                             let tag = device.first_tag();
                             if let Some(mut tag) = tag {
-                                match tag.issue(&provisions.system_secret.clone(), &mut realm) {
+                                let mut realms: Vec<&mut Realm> = Vec::new();
+
+                                let mut doors = create_realm(
+                                    provisions.doors.clone(),
+                                    data.doorsId.clone()
+                                );
+                                realms.push(&mut doors);
+                                let mut drink = create_realm(
+                                    provisions.drink.clone(),
+                                    data.drinkId.clone()
+                                );
+                                realms.push(&mut drink);
+                                let mut member_projects = create_realm(
+                                    provisions.member_projects.clone(),
+                                    data.memberProjectsId.clone()
+                                );
+                                realms.push(&mut member_projects);
+
+                                match tag.issue(&provisions.system_secret.clone(), realms) {
                                     Ok(_) => {
                                         let res_result = client.patch(
-                                            provisions.prefix.clone() + "/keys/" + &association
+                                            provisions.prefix.clone() + "/keys/" + &data.keyId
                                         ).json(&json!({
                                             "enabled": true
                                         })).send();
 
                                         match res_result {
                                             Ok(res) => match res.status() {
-                                                StatusCode::OK =>
+                                                StatusCode::NO_CONTENT =>
                                                     println!("Issued for {}!", username),
                                                 status => {
                                                     println!("Failed to associate key with user! {:?}", status);
