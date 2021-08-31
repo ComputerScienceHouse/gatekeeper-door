@@ -26,6 +26,12 @@ struct KeyCreated {
     memberProjectsId: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[allow(non_snake_case)]
+struct UserLookup {
+    ipaUniqueID: String,
+}
+
 #[derive(Clone)]
 struct RealmKeys {
     auth_key: String,
@@ -55,6 +61,36 @@ fn create_realm(keys: RealmKeys, association: String) -> Realm {
         &keys.update_key, &keys.public_key,
         &keys.private_key
     ).unwrap();
+}
+
+fn resolve_id(client: &reqwest::blocking::Client, prefix: String, username: String) -> Result<UserLookup, String> {
+    if let Ok(res) = client.get(
+        prefix + "/users/uuid-by-uid/" + &username.to_string()
+    ).send() {
+        println!("Status: {}", res.status());
+        match res.status() {
+            StatusCode::OK => {
+                match res.json::<UserLookup>() {
+                    Ok(user) => {
+                        return Ok(user);
+                    },
+                    Err(_) => {
+                        return Err("Failed to parse".to_string());
+                    }
+                }
+            },
+            StatusCode::NOT_FOUND => {
+                println!("User {} doesn't exist!", username);
+                return Err("Doesn't exist".to_string());
+            },
+            status => {
+                println!("Couldn't lookup user {}! {:?}", username, status);
+                return Err("Server error".to_string());
+            },
+        }
+    } else {
+        return Err("Server error".to_string());
+    }
 }
 
 fn main() {
@@ -119,11 +155,19 @@ fn main() {
             Ok(_) => {
                 // Drop newline
                 username.pop();
-                // TODO: Translate username => id
+
+                let resolution = resolve_id(
+                    &client, provisions.prefix.clone(), username.clone()
+                );
+                if let Err(_) = resolution {
+                    continue;
+                }
+                let uuid = resolution.unwrap().ipaUniqueID;
+
                 println!("Ok, enrolling {}", username);
                 let res_result = client.put(provisions.prefix.clone() + "/users")
                     .json(&json!({
-                        "id": username
+                        "id": uuid
                     }))
                     .send();
 
@@ -142,13 +186,12 @@ fn main() {
                     }
                 }
 
-
                 // Now we can ask the server!
                 // We unwrap here because pattern matching hell
                 // + there's probably something very wrong at that point
                 let res = client.put(provisions.prefix.clone() + "/keys")
                     .json(&json!({
-                        "userId": username
+                        "userId": uuid
                     }))
                     .send()
                     .unwrap();
