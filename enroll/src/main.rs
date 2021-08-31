@@ -67,7 +67,6 @@ fn resolve_id(client: &reqwest::blocking::Client, prefix: String, username: Stri
     if let Ok(res) = client.get(
         prefix + "/users/uuid-by-uid/" + &username.to_string()
     ).send() {
-        println!("Status: {}", res.status());
         match res.status() {
             StatusCode::OK => {
                 match res.json::<UserLookup>() {
@@ -173,8 +172,9 @@ fn main() {
 
                 match res_result {
                     Ok(res) => match res.status() {
-                        StatusCode::NO_CONTENT =>
-                            println!("Issued for {}!", username),
+                        // User already exists or we created:
+                        StatusCode::CONFLICT |
+                        StatusCode::NO_CONTENT => {},
                         status => {
                             println!("Failed to associate key with user! {:?}", status);
                             continue;
@@ -198,6 +198,7 @@ fn main() {
                 match res.json::<KeyCreated>() {
                     Ok(data) => {
                         // Now we can ask for the key!
+                        println!("Ready to register for {}! Please scan a tag to enroll it", username);
                         loop {
                             let tag = device.first_tag();
                             if let Some(mut tag) = tag {
