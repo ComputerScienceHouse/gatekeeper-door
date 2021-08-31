@@ -14,7 +14,7 @@ use log4rs::config::{Appender, Config, Root};
 use libgatekeeper_sys::{Nfc, Realm};
 use serde_json::json;
 use std::env;
-use std::time::{Instant, UNIX_EPOCH, Duration};
+use std::time::{Instant, Duration};
 use std::thread;
 use std::sync::mpsc::channel;
 use std::collections::HashMap;
