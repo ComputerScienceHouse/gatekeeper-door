@@ -13,6 +13,7 @@ use std::io;
 use serde::{Serialize, Deserialize};
 // use reqwest::blocking::Client;
 use reqwest::StatusCode;
+use reqwest::header::AUTHORIZATION;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[allow(non_snake_case)]
@@ -30,6 +31,7 @@ struct KeyCreated {
 #[allow(non_snake_case)]
 struct UserLookup {
     ipaUniqueID: String,
+    groups: Vec<String>
 }
 
 #[derive(Clone)]
@@ -51,7 +53,8 @@ struct Provisions {
 
     prefix: String,
     // Consistent always
-    system_secret: String
+    system_secret: String,
+    token: String,
 }
 
 fn create_realm(keys: RealmKeys, association: String) -> Realm {
@@ -63,10 +66,12 @@ fn create_realm(keys: RealmKeys, association: String) -> Realm {
     ).unwrap();
 }
 
-fn resolve_id(client: &reqwest::blocking::Client, prefix: String, username: String) -> Result<UserLookup, String> {
-    if let Ok(res) = client.get(
+fn resolve_id(client: &reqwest::blocking::Client, prefix: String,
+              token: String, username: String) -> Result<UserLookup, String> {
+    let res_result = client.get(
         prefix + "/users/uuid-by-uid/" + &username.to_string()
-    ).send() {
+    ).header(AUTHORIZATION, token).send();
+    if let Ok(res) = res_result {
         match res.status() {
             StatusCode::OK => {
                 match res.json::<UserLookup>() {
@@ -87,8 +92,11 @@ fn resolve_id(client: &reqwest::blocking::Client, prefix: String, username: Stri
                 return Err("Server error".to_string());
             },
         }
-    } else {
+    } else if let Err(err) = res_result {
+        println!("{:?}", err);
         return Err("Server error".to_string());
+    } else {
+        return Err("Unknown error".to_string());
     }
 }
 
@@ -143,7 +151,8 @@ fn main() {
 
         // Constants
         system_secret: env::var("GK_SYSTEM_SECRET").unwrap_or("b00".to_string()),
-        prefix: env::var("GK_HTTP_ENDPOINT").unwrap_or("http://localhost:3000/admin".to_string())
+        prefix: env::var("GK_HTTP_ENDPOINT").unwrap_or("http://localhost:3000/admin".to_string()),
+        token: env::var("GK_ADMIN_SECRETS").unwrap()
     };
 
     loop {
@@ -156,19 +165,24 @@ fn main() {
                 username.pop();
 
                 let resolution = resolve_id(
-                    &client, provisions.prefix.clone(), username.clone()
+                    &client, provisions.prefix.clone(),
+                    provisions.token.clone(), username.clone()
                 );
-                if let Err(_) = resolution {
+                if let Err(err) = resolution {
+                    println!("Error resolving user {}! {:?}", username, err);
                     continue;
                 }
-                let uuid = resolution.unwrap().ipaUniqueID;
+                let resolution = resolution.unwrap();
+                let uuid = resolution.ipaUniqueID;
+                let groups = resolution.groups;
 
                 println!("Ok, enrolling {}", username);
                 let res_result = client.put(provisions.prefix.clone() + "/users")
                     .json(&json!({
-                        "id": uuid
+                        "id": uuid,
+                        "groups": groups
                     }))
-                    .send();
+                    .header(AUTHORIZATION, provisions.token.clone()).send();
 
                 match res_result {
                     Ok(res) => match res.status() {
@@ -193,8 +207,7 @@ fn main() {
                     .json(&json!({
                         "userId": uuid
                     }))
-                    .send()
-                    .unwrap();
+                    .header(AUTHORIZATION, provisions.token.clone()).send().unwrap();
                 match res.json::<KeyCreated>() {
                     Ok(data) => {
                         // Now we can ask for the key!
@@ -224,7 +237,7 @@ fn main() {
                                     Ok(_) => {
                                         let res_result = client.patch(
                                             provisions.prefix.clone() + "/keys/" + &data.keyId
-                                        ).json(&json!({
+                                        ).header(AUTHORIZATION, provisions.token.clone()).json(&json!({
                                             "enabled": true
                                         })).send();
 
