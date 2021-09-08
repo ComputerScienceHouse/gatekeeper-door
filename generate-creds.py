@@ -17,3 +17,5 @@ for realm in ["DOORS", "MEMBER_PROJECTS", "DRINK"]:
   print("export GK_REALM_" + realm + "_PRIVATE_KEY=" + shlex.quote(private_key))
 
 print("export GK_SYSTEM_SECRET=" + secrets.token_hex(16))
+for realm in ["ADMIN", "DRINK", "MEMBER_PROJECTS"]:
+  print("export GK_" + realm + "_SECRETS=" + secrets.token_hex(64))
