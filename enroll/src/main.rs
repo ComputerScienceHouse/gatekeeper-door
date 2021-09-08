@@ -151,7 +151,7 @@ fn main() {
 
         // Constants
         system_secret: env::var("GK_SYSTEM_SECRET").unwrap_or("b00".to_string()),
-        prefix: env::var("GK_HTTP_ENDPOINT").unwrap_or("http://localhost:3000/".to_string()) + "admin",
+        prefix: env::var("GK_HTTP_ENDPOINT").unwrap_or("http://localhost:3000".to_string()) + "/admin",
         token: env::var("GK_ADMIN_SECRETS").unwrap()
     };
 
