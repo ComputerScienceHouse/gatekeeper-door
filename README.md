@@ -2,6 +2,8 @@
 
 Door lock client for the Gatekeeper access control system.
 
+Gatekeeper powers access to the doors to [Computer Science House](https://csh.rit.edu/)'s special rooms
+
 # Building
 
 To download and build this project on a development machine, run the following:
