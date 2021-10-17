@@ -16,11 +16,15 @@ pub struct Beeper {
 
 impl Beeper {
     pub fn new() -> Option<Self> {
-        let pwm = Pwm::new(PWM_CHIP, PWM_NUMBER).unwrap();
+        let pwm = Pwm::new(PWM_CHIP, PWM_NUMBER);
 
-        Some(Beeper {
-            pwm
-        })
+        if pwm.is_ok() {
+            Some(Beeper {
+                pwm: pwm.unwrap(),
+            })
+        } else {
+            None
+        }
     }
 
     fn setup(&self) {

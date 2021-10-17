@@ -1,6 +1,6 @@
 [workspace]
 
 members = [
-    "libgatekeeper-sys",
     "gatekeeper",
+    "enroll"
 ]
