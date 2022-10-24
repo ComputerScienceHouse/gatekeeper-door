@@ -1,6 +1,6 @@
-use sysfs_pwm::{Pwm};
 use std::thread::sleep;
 use std::time::Duration;
+use sysfs_pwm::Pwm;
 
 // PIN: EHRPWM0A (P1_36)
 const PWM_CHIP: u32 = 0;
@@ -18,10 +18,8 @@ impl Beeper {
     pub fn new() -> Option<Self> {
         let pwm = Pwm::new(PWM_CHIP, PWM_NUMBER);
 
-        if pwm.is_ok() {
-            Some(Beeper {
-                pwm: pwm.unwrap(),
-            })
+        if let Ok(pwm) = pwm {
+            Some(Beeper { pwm })
         } else {
             None
         }
@@ -36,33 +34,37 @@ impl Beeper {
 
     pub fn access_denied(&self) {
         println!("Attempt export PWM");
-        self.pwm.with_exported(|| {
-            self.setup();
+        self.pwm
+            .with_exported(|| {
+                self.setup();
 
-            for _ in 0..3 {
+                for _ in 0..3 {
+                    println!("Enable PWM");
+                    self.pwm.enable(true).unwrap();
+                    sleep(Duration::from_millis(80));
+                    println!("Disable PWM");
+                    self.pwm.enable(false).unwrap();
+                    sleep(Duration::from_millis(80));
+                }
+
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    pub fn access_granted(&self) {
+        self.pwm
+            .with_exported(|| {
+                self.setup();
+
                 println!("Enable PWM");
                 self.pwm.enable(true).unwrap();
                 sleep(Duration::from_millis(80));
                 println!("Disable PWM");
                 self.pwm.enable(false).unwrap();
-                sleep(Duration::from_millis(80));
-            }
 
-            Ok(())
-        }).unwrap();
-    }
-
-    pub fn access_granted(&self) {
-        self.pwm.with_exported(|| {
-            self.setup();
-
-            println!("Enable PWM");
-            self.pwm.enable(true).unwrap();
-            sleep(Duration::from_millis(80));
-            println!("Disable PWM");
-            self.pwm.enable(false).unwrap();
-
-            Ok(())
-        }).unwrap();
+                Ok(())
+            })
+            .unwrap();
     }
 }
