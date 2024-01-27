@@ -1,4 +1,6 @@
-FROM docker.io/rustembedded/cross:armv7-unknown-linux-gnueabihf-0.2.1
+ARG CROSS_BASE_IMAGE
+FROM $CROSS_BASE_IMAGE
+#FROM docker.io/rustembedded/cross:armv7-unknown-linux-gnueabihf-0.2.1
 
 # We need to clone up here because installing armhf openssl breaks ca-certificates (seriously...)
 RUN curl -L https://github.com/nfc-tools/libnfc/releases/download/libnfc-1.8.0/libnfc-1.8.0.tar.bz2 | tar xvj && \
