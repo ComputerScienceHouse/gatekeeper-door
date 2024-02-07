@@ -79,7 +79,7 @@ struct ZuulDoorParams {
     #[arg(long, env = "GK_DOOR_LED_PIN")]
     door_led_pin: u32,
     /// GPIO chip path
-    #[arg(long, env = "GK_DOOR_GPIO_CHIP")] // , default_value = "/dev/gpiochip0"
+    #[arg(long, env = "GK_DOOR_GPIO_CHIP", default_value = "/dev/gpiochip0")]
     door_gpio_chip: PathBuf,
 }
 
@@ -91,10 +91,12 @@ impl CliArgs {
 }
 
 fn main() {
+    dotenvy::dotenv().ok();
     // Configure Logging
     env_logger::Builder::from_env(
         env_logger::Env::default().default_filter_or("gatekeeper_door=info"),
-    );
+    )
+    .init();
 
     // Parse arguments
     let args = CliArgs::parse();
@@ -178,7 +180,7 @@ fn check_available_tags<T: Door + Send>(
     just_scanned: bool,
     realm: &mut Realm,
     args: &CliArgs,
-    device: &NfcDevice,
+    device: &mut NfcDevice,
     door: &Mutex<T>,
     client: &mqtt::AsyncClient,
 ) -> Result<bool, Box<dyn std::error::Error>> {
@@ -223,25 +225,29 @@ fn check_available_tags<T: Door + Send>(
 }
 
 fn run<T: Door + Send + 'static>(door: T, args: CliArgs) {
-    println!("Access grananted");
-    door.access_granted();
-    println!("Done :)");
     let door = Arc::new(Mutex::new(door));
     let mut nfc = Nfc::new().ok_or("failed to create NFC context").unwrap();
     let conn_str = args.device.to_string();
-    let device = nfc
+    let mut device = nfc
         .gatekeeper_device(conn_str)
         .ok_or("failed to get gatekeeper device")
         .unwrap();
 
     let client = mqtt::AsyncClient::new(args.mqtt_server.as_str()).unwrap();
+    log::info!(
+        "Connecting to MQTT at {} using {} : {}",
+        args.mqtt_server,
+        args.mqtt_username,
+        args.mqtt_password
+    );
     match client
         .connect(
-            mqtt::connect_options::ConnectOptionsBuilder::new()
+            mqtt::connect_options::ConnectOptionsBuilder::new_ws()
                 .keep_alive_interval(Duration::from_secs(30))
                 .user_name(args.mqtt_username.clone())
                 .password(args.mqtt_password.clone())
                 .automatic_reconnect(Duration::from_secs(1), Duration::from_secs(30))
+                .ssl_options(mqtt::ssl_options::SslOptions::new())
                 .finalize(),
         )
         .wait()
@@ -294,7 +300,7 @@ fn run<T: Door + Send + 'static>(door: T, args: CliArgs) {
 
     let door = &*door;
     loop {
-        match check_available_tags(just_scanned, &mut realm, &args, &device, door, &client) {
+        match check_available_tags(just_scanned, &mut realm, &args, &mut device, door, &client) {
             Ok(found_a_tag) => {
                 just_scanned = found_a_tag;
             }

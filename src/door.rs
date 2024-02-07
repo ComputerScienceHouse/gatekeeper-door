@@ -81,7 +81,7 @@ impl ZuulDoor {
         primary.set_value(1)?;
         secondary.set_value(0)?;
         // TODO: How long?
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(Duration::from_millis(50));
         // Park it:
         primary.set_value(0)?;
         secondary.set_value(0)?;
@@ -107,7 +107,9 @@ impl Door for ZuulDoor {
     }
     fn access_granted(&self) {
         self.unlock();
-        std::thread::sleep(Duration::from_secs(30));
+        log::info!("Opened the door!");
+        std::thread::sleep(Duration::from_secs(5));
+        log::info!("Closing the door!");
         self.lock();
     }
 }
