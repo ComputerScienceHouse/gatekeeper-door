@@ -1,6 +1,6 @@
 use clap::{Args, Parser};
+use gatekeeper_core::{GatekeeperReader, NfcTag, Realm, RealmType};
 use lazy_static::lazy_static;
-use libgatekeeper_sys::{Nfc, NfcDevice, Realm};
 use paho_mqtt as mqtt;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -53,10 +53,10 @@ struct CliArgs {
 
     /// Gatekeeper mobile encryption private key
     #[arg(long, env = "GK_REALM_DOORS_MOBILE_CRYPT_PRIVATE_KEY")]
-    asymmetric_private_key: String,
+    mobile_decryption_private_key: String,
     /// Gatekeeper mobile signing private key
     #[arg(long, env = "GK_REALM_DOORS_MOBILE_PRIVATE_KEY")]
-    mobile_private_key: String,
+    mobile_signing_private_key: String,
 
     /// Door parameters
     #[command(flatten)]
@@ -178,14 +178,19 @@ const ACCESS_DENIED: &str = "access_denied";
 
 fn check_available_tags<T: Door + Send>(
     just_scanned: bool,
-    realm: &mut Realm,
     args: &CliArgs,
-    device: &mut NfcDevice,
+    gatekeeper_reader: &mut GatekeeperReader,
     door: &Mutex<T>,
     client: &mqtt::AsyncClient,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     let now = Instant::now();
-    if let Some(association) = device.authenticate_tag(realm)? {
+    if let Some(association) = gatekeeper_reader
+        .get_nearby_tags()
+        .into_iter()
+        .next()
+        .map(|tag| tag.authenticate())
+    {
+        let association = association?;
         // User hasn't taken their tag off the reader yet, don't spam requests
         if just_scanned {
             return Ok(true);
@@ -226,10 +231,16 @@ fn check_available_tags<T: Door + Send>(
 
 fn run<T: Door + Send + 'static>(door: T, args: CliArgs) {
     let door = Arc::new(Mutex::new(door));
-    let mut nfc = Nfc::new().ok_or("failed to create NFC context").unwrap();
-    let conn_str = args.device.to_string();
-    let mut device = nfc
-        .gatekeeper_device(conn_str)
+    let realm = Realm::new(
+        RealmType::Door,
+        args.auth_key.clone().into_bytes(),
+        args.read_key.clone().into_bytes(),
+        args.public_key.as_bytes(),
+        args.mobile_decryption_private_key.as_bytes(),
+        args.mobile_signing_private_key.as_bytes(),
+        None,
+    );
+    let mut gatekeeper_reader = GatekeeperReader::new(args.device.clone(), realm)
         .ok_or("failed to get gatekeeper device")
         .unwrap();
 
@@ -273,34 +284,12 @@ fn run<T: Door + Send + 'static>(door: T, args: CliArgs) {
         thread::spawn(move || door_heartbeat(client, &args));
     }
 
-    let slot = 0;
-    let slot_name = "Doors";
-
     // Wait until the tag disappears before re-scanning:
     let mut just_scanned = false;
-    let mut realm = Realm::new(
-        slot,
-        slot_name,
-        "",
-        &args.auth_key,
-        &args.read_key,
-        // No write key:
-        &"a".repeat(32),
-        &args.public_key,
-        // No private key:
-        &format!(
-            "-----BEGIN EC PRIVATE KEY-----
-{}\n-----END EC PRIVATE KEY-----\n",
-            "a".repeat(224)
-        ),
-        &args.mobile_private_key,
-        &args.asymmetric_private_key,
-    )
-    .unwrap();
 
     let door = &*door;
     loop {
-        match check_available_tags(just_scanned, &mut realm, &args, &mut device, door, &client) {
+        match check_available_tags(just_scanned, &args, &mut gatekeeper_reader, door, &client) {
             Ok(found_a_tag) => {
                 just_scanned = found_a_tag;
             }
