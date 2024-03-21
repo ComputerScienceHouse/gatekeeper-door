@@ -117,44 +117,49 @@ fn main() {
 }
 
 fn check_mqtt<T: Door + Send>(client: mqtt::AsyncClient, door: &Mutex<T>, args: CliArgs) {
-    let mqtt_queue = client.start_consuming();
-
     let prefix = args.get_prefix();
     let prefix_trailing = format!("{prefix}/");
-    // We unwrap not because we need the response, but because we want to make sure
-    // We aren't writing buggy code!
-    client
-        .subscribe_many(
-            &[
-                format!("{prefix_trailing}{REMOTE_UNLOCK}"),
-                format!("{prefix_trailing}{ACCESS_DENIED}"),
-            ],
-            &[1, 1],
-        )
-        .wait()
-        .unwrap();
 
     loop {
-        for msg in mqtt_queue.iter().flatten() {
-            let topic = msg.topic().strip_prefix(&prefix_trailing);
-            match topic {
-                Some(REMOTE_UNLOCK) => {
-                    door.lock().unwrap().access_granted();
+        log::info!("Running a tick of the MQTT check loop (This shouldn't happen often!)");
+        let mqtt_queue = client.start_consuming();
+        // We unwrap not because we need the response, but because we want to make sure
+        // We aren't writing buggy code!
+        client
+            .subscribe_many(
+                &[
+                    format!("{prefix_trailing}{REMOTE_UNLOCK}"),
+                    format!("{prefix_trailing}{ACCESS_DENIED}"),
+                ],
+                &[1, 1],
+            )
+            .wait()
+            .unwrap();
+        for msg in mqtt_queue.iter() {
+            if let Some(msg) = msg {
+                let topic = msg.topic().strip_prefix(&prefix_trailing);
+                match topic {
+                    Some(REMOTE_UNLOCK) => {
+                        door.lock().unwrap().access_granted();
+                    }
+                    Some(ACCESS_DENIED) => {
+                        door.lock().unwrap().access_denied();
+                    }
+                    Some(topic) => {
+                        log::warn!("Unknown topic: {topic}");
+                    }
+                    None => {
+                        log::info!("Throwing away a message missing prefix {prefix_trailing} (should have trailing /): {}", msg.topic());
+                    }
                 }
-                Some(ACCESS_DENIED) => {
-                    door.lock().unwrap().access_denied();
+            } else {
+                // Shouldn't be necessary but who knows :shrug:
+                log::warn!("Reconnecting. Are we connected? {}", client.is_connected());
+                if let Err(err) = client.reconnect().wait() {
+                    log::warn!("Failed to reconnect, retrying: {}", err);
                 }
-                Some(topic) => {
-                    log::warn!("Unknown topic: {topic}");
-                }
-                None => {
-                    log::info!("Throwing away a message missing prefix {prefix_trailing} (should have trailing /): {}", msg.topic());
-                }
+                break;
             }
-        }
-        // Shouldn't be necessary but who knows :shrug:
-        if let Err(err) = client.reconnect().wait() {
-            println!("Failed to reconnect, retrying: {}", err);
         }
     }
 }
