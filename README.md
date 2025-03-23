@@ -6,6 +6,14 @@ Gatekeeper powers access to the doors to [Computer Science House](https://csh.ri
 
 # Building
 
+To build this machine on target hardware,
+
+```
+git clone https://github.com/computersciencehouse/gatekeeper-door
+apt -y install libssl-dev cmake libfreefare-dev
+cargo build --release
+```
+
 To download and build this project on a development machine, run the following:
 
 ```
