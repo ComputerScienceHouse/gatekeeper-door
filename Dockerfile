@@ -35,16 +35,6 @@ RUN cd libfreefare-0.4.0 && \
     make && \
     make install
 
-COPY libgatekeeper /libgatekeeper
-
-RUN cd libgatekeeper && \
-    mkdir build && \
-    cd build && \
-    cmake .. -DCMAKE_TOOLCHAIN_FILE=/armv7-toolchain.cmake \
-        -DCMAKE_INSTALL_PREFIX=/usr/arm-linux-gnueabihf/ && \
-    make && \
-    make install
-
 # https://github.com/rust-embedded/cross/issues/404  
 # Actual crates don't use the correct pkg-config (eyeroll)
 ENV PKG_CONFIG_LIBDIR=/usr/local/lib/arm-linux-gnueabihf/pkgconfig:/usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/arm-linux-gnueabihf/lib/pkgconfig

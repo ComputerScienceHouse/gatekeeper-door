@@ -1,9 +1,18 @@
 use gpio_cdev::{errors::Error as GpioError, Chip, LineHandle, LineRequestFlags};
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+use crate::pwm::Pwm;
 
 #[derive(Default, Debug)]
 pub struct FakeDoor;
+
+enum Noise {
+    Error,
+    Granted,
+    Locking,
+    None,
+}
 
 impl Door for FakeDoor {
     fn access_denied(&self) {
@@ -28,6 +37,7 @@ pub struct ZuulDoor {
     motor_f: LineHandle,
     motor_r: LineHandle,
     led: LineHandle,
+    buzzer: Pwm,
 }
 
 pub trait Door {
@@ -47,6 +57,8 @@ impl ZuulDoor {
         motor_r_pin: u32,
         motor_f_pin: u32,
         led_pin: u32,
+        buzzer_chip: usize,
+        buzzer_pin: usize,
     ) -> Self {
         let mut chip = Chip::new(gpio_dev_path).expect("Bad GPIO path");
         let motor_f = chip
@@ -61,17 +73,58 @@ impl ZuulDoor {
             .get_line(led_pin)
             .and_then(|line| line.request(LineRequestFlags::OUTPUT, 0, "blinkenlight"))
             .expect("Bad led pin");
+
+        let buzzer = Pwm::try_new(buzzer_chip, buzzer_pin).expect("Bad buzzer config");
+
         Self {
             motor_f,
             motor_r,
             led,
+            buzzer,
         }
     }
 
+    fn play_noise(&self, noise: Noise) -> std::io::Result<()> {
+        match noise {
+            Noise::Error => {
+                for _ in 0..3 {
+                    let mut buzzer = self.buzzer.activate();
+                    buzzer.set_period(2400000)?;
+                    std::thread::sleep(Duration::from_millis(500));
+                    buzzer.set_period(2200000)?;
+                    std::thread::sleep(Duration::from_millis(500));
+                }
+            }
+            Noise::Granted => {
+                let mut buzzer = self.buzzer.activate();
+                buzzer.set_period(2000000)?;
+                std::thread::sleep(Duration::from_millis(300));
+                buzzer.set_period(1800000)?;
+                std::thread::sleep(Duration::from_millis(500));
+                buzzer.set_period(1500000)?;
+                std::thread::sleep(Duration::from_millis(500));
+            }
+            Noise::Locking => {
+                let mut buzzer = self.buzzer.activate();
+                buzzer.set_period(3000000)?;
+                std::thread::sleep(Duration::from_millis(300));
+                buzzer.set_period(3500000)?;
+                std::thread::sleep(Duration::from_millis(300));
+            }
+            Noise::None => {}
+        }
+        Ok(())
+    }
+
     /// Wink out the LED once
-    fn blink(&self) {
+    fn blink(&self, noise: Noise) {
         self.led.set_value(0).expect("Couldn't write to LED");
-        std::thread::sleep(Duration::from_millis(500));
+        let then = Instant::now();
+        self.play_noise(noise).expect("Couldn't write to buzzer");
+        std::thread::sleep(std::cmp::max(
+            Instant::now() - then,
+            Duration::from_millis(500),
+        ));
         self.led.set_value(1).expect("Couldn't write to LED");
     }
 
@@ -93,17 +146,17 @@ impl Door for ZuulDoor {
     fn unlock(&self) {
         self.drive(&self.motor_f, &self.motor_r)
             .expect("Couldn't write to motor");
-        self.blink();
+        self.blink(Noise::Granted);
     }
     fn lock(&self) {
         self.drive(&self.motor_r, &self.motor_f)
             .expect("Couldn't write to motor");
-        self.blink();
+        self.blink(Noise::Locking);
     }
     fn access_denied(&self) {
-        self.blink();
+        self.blink(Noise::Error);
         std::thread::sleep(Duration::from_millis(500));
-        self.blink();
+        self.blink(Noise::Error);
     }
     fn access_granted(&self) {
         self.unlock();

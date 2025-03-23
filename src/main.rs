@@ -12,6 +12,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 mod door;
+mod pwm;
 use crate::door::{Door, FakeDoor, ZuulDoor};
 
 #[derive(Serialize, Debug)]
@@ -67,6 +68,10 @@ struct CliArgs {
     /// Simulate?
     #[arg(long)]
     simulate: bool,
+
+    /// Unlock?
+    #[arg(long)]
+    unlock: bool,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -83,6 +88,13 @@ struct ZuulDoorParams {
     /// GPIO chip path
     #[arg(long, env = "GK_DOOR_GPIO_CHIP", default_value = "/dev/gpiochip0")]
     door_gpio_chip: PathBuf,
+
+    /// PWM pin attached to the buzzer
+    #[arg(long, env = "GK_DOOR_BUZZER_PIN", default_value = "0")]
+    door_buzzer_pin: usize,
+    /// PWM chip id
+    #[arg(long, env = "GK_DOOR_BUZZER_CHIP", default_value = "0")]
+    door_buzzer_chip: usize,
 }
 
 impl CliArgs {
@@ -119,6 +131,8 @@ fn main() {
                 args.zuul.door_r_pin,
                 args.zuul.door_f_pin,
                 args.zuul.door_led_pin,
+                args.zuul.door_buzzer_chip,
+                args.zuul.door_buzzer_pin,
             ),
             args,
         ),
@@ -303,6 +317,10 @@ fn run<T: Door + Send + 'static>(door: T, args: CliArgs) {
     let mut just_scanned = false;
 
     let door = &*door;
+    if args.unlock {
+        door.lock().unwrap().access_granted();
+        return;
+    }
     loop {
         match check_available_tags(just_scanned, &args, &mut gatekeeper_reader, door, &client) {
             Ok(found_a_tag) => {
