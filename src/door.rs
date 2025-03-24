@@ -134,7 +134,7 @@ impl ZuulDoor {
         primary.set_value(1)?;
         secondary.set_value(0)?;
         // TODO: How long?
-        std::thread::sleep(Duration::from_millis(50));
+        std::thread::sleep(Duration::from_millis(70));
         // Park it:
         primary.set_value(0)?;
         secondary.set_value(0)?;
