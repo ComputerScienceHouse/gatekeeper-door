@@ -143,33 +143,22 @@ fn main() {
 fn check_mqtt<T: Door + Send>(client: mqtt::AsyncClient, door: &Mutex<T>, args: CliArgs) {
     let prefix = args.get_prefix();
     let prefix_trailing = format!("{prefix}/");
-    let mut attempt = 0;
 
     loop {
         log::info!("Running a tick of the MQTT check loop (This shouldn't happen often!)");
         let mqtt_queue = client.start_consuming();
-
-        if attempt >= 10 {
-            log::error!("Failed to subscribe after 10 attempts, giving up!");
-            break;
-        }
-
-        // logs the error instead of failing silently
-        // wont panic and crash the program 
-        if let Err(err) = client.subscribe_many(  
-            &[
-                format!("{prefix_trailing}{REMOTE_UNLOCK}"),
-                format!("{prefix_trailing}{ACCESS_DENIED}"),
-            ],
-            &[1, 1],
-        ).wait() {
-            log::warn!("Subscribe failed (attempt {}): {}",attempt + 1, err);
-            attempt += 1;
-            continue;
-        }
-
-        attempt = 0; // reset attempts
-
+        // We unwrap not because we need the response, but because we want to make sure
+        // We aren't writing buggy code!
+        client
+            .subscribe_many(
+                &[
+                    format!("{prefix_trailing}{REMOTE_UNLOCK}"),
+                    format!("{prefix_trailing}{ACCESS_DENIED}"),
+                ],
+                &[1, 1],
+            )
+            .wait()
+            .unwrap();
         for msg in mqtt_queue.iter() {
             if let Some(msg) = msg {
                 let topic = msg.topic().strip_prefix(&prefix_trailing);
